@@ -5,6 +5,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - uses: actions/cache@v2
         with:
           path: ~/go/pkg/mod
@@ -43,6 +45,8 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
     steps:
       - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
       - uses: actions/cache@v2
         with:
           path: ~/go/pkg/mod
@@ -50,6 +54,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-
       - run: go mod download
+      - run: echo "test"
       - run: make bootstrap
       - run: |
           export CONTROLLER_TAG="premerge-$(git rev-parse --short HEAD)"
@@ -59,12 +64,11 @@ jobs:
           export GOPATH=$(pwd)/go
           ./script/pull-or-build-image.sh function-controller
           ./script/pull-or-build-image.sh function-image-builder
-          docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD"   
+          docker login -u="$DOCKER_USERNAME" -p="$DOCKER_PASSWORD" || echo "Only repo editors can push images"
           images=( 
             $CONTROLLER_IMAGE_NAME
             $BUILDER_IMAGE_NAME 
           )
           for image in "${images[@]}"; do
-            echo "Pulling ${image}:${CONTROLLER_TAG}"
-            docker push ${image}:${CONTROLLER_TAG}
+            docker push ${image}:${CONTROLLER_TAG} || echo "Only repo editors can push images"
           done
