@@ -872,27 +872,37 @@ func getConfigLocation(apiExtensionsClientset clientsetAPIExtensions.Interface) 
 	configLocation := ConfigLocation{}
 	controllerNamespace := os.Getenv("KUBELESS_NAMESPACE")
 	kubelessConfig := os.Getenv("KUBELESS_CONFIG")
+	/*
+		annotationsCRD, err := GetAnnotationsFromCRD(apiExtensionsClientset, "functions.kubeless.io")
+		if err != nil {
+			return configLocation, err
+		}
+		if len(controllerNamespace) == 0 {
+			if ns, ok := annotationsCRD["kubeless.io/namespace"]; ok {
+				controllerNamespace = ns
+			} else {
+				controllerNamespace = "kubeless"
+			}
+		}
+		if len(kubelessConfig) == 0 {
+			if config, ok := annotationsCRD["kubeless.io/config"]; ok {
+				kubelessConfig = config
+			} else {
+				kubelessConfig = "kubeless-config"
+			}
+		}
+	*/
 
-	annotationsCRD, err := GetAnnotationsFromCRD(apiExtensionsClientset, "functions.kubeless.io")
-	if err != nil {
-		return configLocation, err
-	}
 	if len(controllerNamespace) == 0 {
-		if ns, ok := annotationsCRD["kubeless.io/namespace"]; ok {
-			controllerNamespace = ns
-		} else {
-			controllerNamespace = "kubeless"
-		}
+		configLocation.Namespace = "kubeless"
+	} else {
+		configLocation.Namespace = controllerNamespace
 	}
-	configLocation.Namespace = controllerNamespace
 	if len(kubelessConfig) == 0 {
-		if config, ok := annotationsCRD["kubeless.io/config"]; ok {
-			kubelessConfig = config
-		} else {
-			kubelessConfig = "kubeless-config"
-		}
+		configLocation.Name = "kubeless-config"
+	} else {
+		configLocation.Name = kubelessConfig
 	}
-	configLocation.Name = kubelessConfig
 	return configLocation, nil
 }
 
