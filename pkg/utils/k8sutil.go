@@ -17,10 +17,12 @@ limitations under the License.
 package utils
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	monitoringv1 "github.com/coreos/prometheus-operator/pkg/client/versioned/typed/monitoring/v1"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -39,8 +41,6 @@ import (
 	k8sErrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-
-	monitoringv1alpha1 "github.com/coreos/prometheus-operator/pkg/client/monitoring/v1alpha1"
 
 	// Auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
@@ -242,7 +242,8 @@ func GetFunctionCustomResource(kubelessClient versioned.Interface, funcName, ns 
 // GetPodsByLabel returns list of pods which match the label
 // We use this to returns pods to which the function is deployed or pods running controllers
 func GetPodsByLabel(c kubernetes.Interface, ns, k, v string) (*v1.PodList, error) {
-	pods, err := c.Core().Pods(ns).List(metav1.ListOptions{
+	ctx := context.Background()
+	pods, err := c.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
 		LabelSelector: k + "=" + v,
 	})
 	if err != nil {
@@ -281,6 +282,7 @@ func GetLocalHostname(config *rest.Config, funcName string) (string, error) {
 }
 
 func doRESTReq(restIface rest.Interface, groupVersion, verb, resource, elem, namespace string, body interface{}, result interface{}) error {
+	ctx := context.Background()
 	var req *rest.Request
 	bodyJSON := []byte{}
 	var err error
@@ -303,7 +305,7 @@ func doRESTReq(restIface rest.Interface, groupVersion, verb, resource, elem, nam
 	default:
 		return fmt.Errorf("Verb %s not supported", verb)
 	}
-	rawResponse, err := req.AbsPath("apis", groupVersion, "namespaces", namespace, resource).DoRaw()
+	rawResponse, err := req.AbsPath("apis", groupVersion, "namespaces", namespace, resource).DoRaw(ctx)
 	if err != nil {
 		return err
 	}
@@ -318,19 +320,22 @@ func doRESTReq(restIface rest.Interface, groupVersion, verb, resource, elem, nam
 
 // CreateAutoscale creates HPA object for function
 func CreateAutoscale(client kubernetes.Interface, hpa v2beta1.HorizontalPodAutoscaler) error {
-	_, err := client.AutoscalingV2beta1().HorizontalPodAutoscalers(hpa.ObjectMeta.Namespace).Create(&hpa)
+	ctx := context.Background()
+	_, err := client.AutoscalingV2beta1().HorizontalPodAutoscalers(hpa.ObjectMeta.Namespace).Create(ctx, &hpa, metav1.CreateOptions{})
 	return err
 }
 
 // UpdateAutoscale updates an existing HPA object for a function
 func UpdateAutoscale(client kubernetes.Interface, hpa v2beta1.HorizontalPodAutoscaler) error {
-	_, err := client.AutoscalingV2beta1().HorizontalPodAutoscalers(hpa.ObjectMeta.Namespace).Update(&hpa)
+	ctx := context.Background()
+	_, err := client.AutoscalingV2beta1().HorizontalPodAutoscalers(hpa.ObjectMeta.Namespace).Update(ctx, &hpa, metav1.UpdateOptions{})
 	return err
 }
 
 // DeleteAutoscale deletes an autoscale rule
 func DeleteAutoscale(client kubernetes.Interface, name, ns string) error {
-	err := client.AutoscalingV2beta1().HorizontalPodAutoscalers(ns).Delete(name, &metav1.DeleteOptions{})
+	ctx := context.Background()
+	err := client.AutoscalingV2beta1().HorizontalPodAutoscalers(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !k8sErrors.IsNotFound(err) {
 		return err
 	}
@@ -338,8 +343,9 @@ func DeleteAutoscale(client kubernetes.Interface, name, ns string) error {
 }
 
 // DeleteServiceMonitor cleans the sm if it exists
-func DeleteServiceMonitor(smclient monitoringv1alpha1.MonitoringV1alpha1Client, name, ns string) error {
-	err := smclient.ServiceMonitors(ns).Delete(name, &metav1.DeleteOptions{})
+func DeleteServiceMonitor(smclient monitoringv1.MonitoringV1Client, name, ns string) error {
+	ctx := context.Background()
+	err := smclient.ServiceMonitors(ns).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !k8sErrors.IsNotFound(err) {
 		return err
 	}
@@ -441,7 +447,8 @@ func FunctionObjRemoveFinalizer(kubelessClient versioned.Interface, funcObj *kub
 
 // GetAnnotationsFromCRD gets annotations from a CustomResourceDefinition
 func GetAnnotationsFromCRD(clientset clientsetAPIExtensions.Interface, name string) (map[string]string, error) {
-	crd, err := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(name, metav1.GetOptions{})
+	ctx := context.Background()
+	crd, err := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}

@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"golang.org/x/net/context"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -34,7 +35,8 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	monitoringv1alpha1 "github.com/coreos/prometheus-operator/pkg/client/monitoring/v1alpha1"
+	monitoringv1api "github.com/coreos/prometheus-operator/pkg/apis/monitoring/v1"
+	monitoringv1 "github.com/coreos/prometheus-operator/pkg/client/versioned/typed/monitoring/v1"
 	"github.com/ghodss/yaml"
 	kubelessApi "github.com/kubeless/kubeless/pkg/apis/kubeless/v1beta1"
 	"github.com/kubeless/kubeless/pkg/langruntime"
@@ -56,7 +58,8 @@ const secretsMountPath = "/var/run/secrets/kubeless.io"
 
 // GetFunctionPort returns the port for a function service
 func GetFunctionPort(clientset kubernetes.Interface, namespace, functionName string) (string, error) {
-	svc, err := clientset.CoreV1().Services(namespace).Get(functionName, metav1.GetOptions{})
+	ctx := context.Background()
+	svc, err := clientset.CoreV1().Services(namespace).Get(ctx, functionName, metav1.GetOptions{})
 	if err != nil {
 		return "", fmt.Errorf("Unable to find the service for function %s", functionName)
 	}
@@ -227,13 +230,13 @@ func EnsureFuncConfigMap(client kubernetes.Interface, funcObj *kubelessApi.Funct
 		},
 		Data: configMapData,
 	}
-
-	_, err = client.Core().ConfigMaps(funcObj.ObjectMeta.Namespace).Create(configMap)
+	ctx := context.Background()
+	_, err = client.CoreV1().ConfigMaps(funcObj.ObjectMeta.Namespace).Create(ctx, configMap, metav1.CreateOptions{})
 	if err != nil && k8sErrors.IsAlreadyExists(err) {
 		// In case the ConfigMap already exists we should update
 		// just certain fields (to avoid race conditions)
 		var newConfigMap *v1.ConfigMap
-		newConfigMap, err = client.Core().ConfigMaps(funcObj.ObjectMeta.Namespace).Get(funcObj.ObjectMeta.Name, metav1.GetOptions{})
+		newConfigMap, err = client.CoreV1().ConfigMaps(funcObj.ObjectMeta.Namespace).Get(ctx, funcObj.ObjectMeta.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -243,7 +246,7 @@ func EnsureFuncConfigMap(client kubernetes.Interface, funcObj *kubelessApi.Funct
 		newConfigMap.ObjectMeta.Labels = funcObj.ObjectMeta.Labels
 		newConfigMap.ObjectMeta.OwnerReferences = or
 		newConfigMap.Data = configMap.Data
-		_, err = client.Core().ConfigMaps(funcObj.ObjectMeta.Namespace).Update(newConfigMap)
+		_, err = client.CoreV1().ConfigMaps(funcObj.ObjectMeta.Namespace).Update(ctx, newConfigMap, metav1.UpdateOptions{})
 		if err != nil && k8sErrors.IsAlreadyExists(err) {
 			// The configmap may already exist and there is nothing to update
 			return nil
@@ -276,6 +279,7 @@ func serviceSpec(funcObj *kubelessApi.Function) v1.ServiceSpec {
 
 // EnsureFuncService creates/updates a function service
 func EnsureFuncService(client kubernetes.Interface, funcObj *kubelessApi.Function, or []metav1.OwnerReference) error {
+	ctx := context.Background()
 	svc := &v1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:            funcObj.ObjectMeta.Name,
@@ -285,12 +289,12 @@ func EnsureFuncService(client kubernetes.Interface, funcObj *kubelessApi.Functio
 		Spec: serviceSpec(funcObj),
 	}
 
-	_, err := client.Core().Services(funcObj.ObjectMeta.Namespace).Create(svc)
+	_, err := client.CoreV1().Services(funcObj.ObjectMeta.Namespace).Create(ctx, svc, metav1.CreateOptions{})
 	if err != nil && k8sErrors.IsAlreadyExists(err) {
 		// In case the SVC already exists we should update
 		// just certain fields (to avoid race conditions)
 		var newSvc *v1.Service
-		newSvc, err = client.Core().Services(funcObj.ObjectMeta.Namespace).Get(funcObj.ObjectMeta.Name, metav1.GetOptions{})
+		newSvc, err = client.CoreV1().Services(funcObj.ObjectMeta.Namespace).Get(ctx, funcObj.ObjectMeta.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -300,7 +304,7 @@ func EnsureFuncService(client kubernetes.Interface, funcObj *kubelessApi.Functio
 		newSvc.ObjectMeta.Labels = funcObj.ObjectMeta.Labels
 		newSvc.ObjectMeta.OwnerReferences = or
 		newSvc.Spec.Ports = svc.Spec.Ports
-		_, err = client.Core().Services(funcObj.ObjectMeta.Namespace).Update(newSvc)
+		_, err = client.CoreV1().Services(funcObj.ObjectMeta.Namespace).Update(ctx, newSvc, metav1.UpdateOptions{})
 		if err != nil && k8sErrors.IsAlreadyExists(err) {
 			// The service may already exist and there is nothing to update
 			return nil
@@ -488,7 +492,8 @@ func EnsureFuncImage(client kubernetes.Interface, funcObj *kubelessApi.Function,
 		return errors.New("Expecting sha256 as image tag")
 	}
 	jobName := fmt.Sprintf("build-%s-%s", funcObj.ObjectMeta.Name, tag[0:10])
-	_, err := client.BatchV1().Jobs(funcObj.ObjectMeta.Namespace).Get(jobName, metav1.GetOptions{})
+	ctx := context.Background()
+	_, err := client.BatchV1().Jobs(funcObj.ObjectMeta.Namespace).Get(ctx, jobName, metav1.GetOptions{})
 	if err == nil {
 		// The job already exists
 		logrus.Infof("Found a previous job for building %s:%s", imageName, tag)
@@ -586,7 +591,7 @@ func EnsureFuncImage(client kubernetes.Interface, funcObj *kubelessApi.Function,
 	}
 
 	// Create the job if doesn't exists yet
-	_, err = client.BatchV1().Jobs(funcObj.ObjectMeta.Namespace).Create(&buildJob)
+	_, err = client.BatchV1().Jobs(funcObj.ObjectMeta.Namespace).Create(ctx, &buildJob, metav1.CreateOptions{})
 	if err == nil {
 		logrus.Infof("Started function build job %s", jobName)
 	}
@@ -612,6 +617,8 @@ func mergeMap(dst, src map[string]string) map[string]string {
 
 // EnsureFuncDeployment creates/updates a function deployment
 func EnsureFuncDeployment(client kubernetes.Interface, funcObj *kubelessApi.Function, or []metav1.OwnerReference, lr *langruntime.Langruntimes, prebuiltRuntimeImage, provisionImage string, imagePullSecrets []v1.LocalObjectReference) error {
+
+	ctx := context.Background()
 
 	var err error
 
@@ -762,12 +769,12 @@ func EnsureFuncDeployment(client kubernetes.Interface, funcObj *kubelessApi.Func
 		}
 	}
 
-	_, err = client.AppsV1().Deployments(funcObj.ObjectMeta.Namespace).Create(dpm)
+	_, err = client.AppsV1().Deployments(funcObj.ObjectMeta.Namespace).Create(ctx, dpm, metav1.CreateOptions{})
 	if err != nil && k8sErrors.IsAlreadyExists(err) {
 		// In case the Deployment already exists we should update
 		// just certain fields (to avoid race conditions)
 		var newDpm *appsv1.Deployment
-		newDpm, err = client.AppsV1().Deployments(funcObj.ObjectMeta.Namespace).Get(funcObj.ObjectMeta.Name, metav1.GetOptions{})
+		newDpm, err = client.AppsV1().Deployments(funcObj.ObjectMeta.Namespace).Get(ctx, funcObj.ObjectMeta.Name, metav1.GetOptions{})
 		if err != nil {
 			return err
 		}
@@ -786,7 +793,7 @@ func EnsureFuncDeployment(client kubernetes.Interface, funcObj *kubelessApi.Func
 			return err
 		}
 		// Use `Patch` to do a rolling update
-		_, err = client.AppsV1().Deployments(funcObj.ObjectMeta.Namespace).Patch(newDpm.Name, types.MergePatchType, data)
+		_, err = client.AppsV1().Deployments(funcObj.ObjectMeta.Namespace).Patch(ctx, newDpm.Name, types.MergePatchType, data, metav1.PatchOptions{})
 		if err != nil {
 			return err
 		}
@@ -796,11 +803,12 @@ func EnsureFuncDeployment(client kubernetes.Interface, funcObj *kubelessApi.Func
 }
 
 // CreateServiceMonitor creates a Service Monitor for the given function
-func CreateServiceMonitor(smclient monitoringv1alpha1.MonitoringV1alpha1Client, funcObj *kubelessApi.Function, ns string, or []metav1.OwnerReference) error {
-	_, err := smclient.ServiceMonitors(ns).Get(funcObj.ObjectMeta.Name, metav1.GetOptions{})
+func CreateServiceMonitor(smclient monitoringv1.MonitoringV1Client, funcObj *kubelessApi.Function, ns string, or []metav1.OwnerReference) error {
+	ctx := context.Background()
+	_, err := smclient.ServiceMonitors(ns).Get(ctx, funcObj.ObjectMeta.Name, metav1.GetOptions{})
 	if err != nil {
 		if k8sErrors.IsNotFound(err) {
-			s := &monitoringv1alpha1.ServiceMonitor{
+			s := &monitoringv1api.ServiceMonitor{
 				ObjectMeta: metav1.ObjectMeta{
 					Name:      funcObj.ObjectMeta.Name,
 					Namespace: ns,
@@ -809,20 +817,20 @@ func CreateServiceMonitor(smclient monitoringv1alpha1.MonitoringV1alpha1Client, 
 					}),
 					OwnerReferences: or,
 				},
-				Spec: monitoringv1alpha1.ServiceMonitorSpec{
+				Spec: monitoringv1api.ServiceMonitorSpec{
 					Selector: metav1.LabelSelector{
 						MatchLabels: map[string]string{
 							"function": funcObj.ObjectMeta.Name,
 						},
 					},
-					Endpoints: []monitoringv1alpha1.Endpoint{
+					Endpoints: []monitoringv1api.Endpoint{
 						{
 							Port: "http-function-port",
 						},
 					},
 				},
 			}
-			_, err = smclient.ServiceMonitors(ns).Create(s)
+			_, err = smclient.ServiceMonitors(ns).Create(ctx, s, metav1.CreateOptions{})
 			if err != nil {
 				return err
 			}
@@ -908,13 +916,14 @@ func getConfigLocation(apiExtensionsClientset clientsetAPIExtensions.Interface) 
 
 // GetKubelessConfig Returns Kubeless ConfigMap
 func GetKubelessConfig(cli kubernetes.Interface, cliAPIExtensions clientsetAPIExtensions.Interface) (*v1.ConfigMap, error) {
+	ctx := context.Background()
 	configLocation, err := getConfigLocation(cliAPIExtensions)
 	if err != nil {
 		return nil, fmt.Errorf("Error while fetching config location: %v", err)
 	}
 	controllerNamespace := configLocation.Namespace
 	kubelessConfig := configLocation.Name
-	config, err := cli.CoreV1().ConfigMaps(controllerNamespace).Get(kubelessConfig, metav1.GetOptions{})
+	config, err := cli.CoreV1().ConfigMaps(controllerNamespace).Get(ctx, kubelessConfig, metav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("Unable to read the configmap: %s", err)
 	}

@@ -25,7 +25,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	monitoringv1alpha1 "github.com/coreos/prometheus-operator/pkg/client/monitoring/v1alpha1"
+	monitoringv1 "github.com/coreos/prometheus-operator/pkg/client/versioned/typed/monitoring/v1"
 	"github.com/kubeless/kubeless/pkg/controller"
 	"github.com/kubeless/kubeless/pkg/utils"
 	"github.com/kubeless/kubeless/pkg/version"
@@ -57,7 +57,7 @@ var rootCmd = &cobra.Command{
 			logrus.Fatalf("Cannot get REST client: %v", err)
 		}
 		// ServiceMonitor client is needed for handling monitoring resources
-		smclient, err := monitoringv1alpha1.NewForConfig(restCfg)
+		smclient, err := monitoringv1.NewForConfig(restCfg)
 		if err != nil {
 			logrus.Fatal(err)
 		}
