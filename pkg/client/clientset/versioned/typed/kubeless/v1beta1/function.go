@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,6 +18,7 @@ package v1beta1
 import (
 	v1beta1 "github.com/kubeless/kubeless/pkg/apis/kubeless/v1beta1"
 	scheme "github.com/kubeless/kubeless/pkg/client/clientset/versioned/scheme"
+	"golang.org/x/net/context"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
@@ -65,7 +66,7 @@ func (c *functions) Get(name string, options v1.GetOptions) (result *v1beta1.Fun
 		Resource("functions").
 		Name(name).
 		VersionedParams(&options, scheme.ParameterCodec).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return
 }
@@ -77,7 +78,7 @@ func (c *functions) List(opts v1.ListOptions) (result *v1beta1.FunctionList, err
 		Namespace(c.ns).
 		Resource("functions").
 		VersionedParams(&opts, scheme.ParameterCodec).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return
 }
@@ -89,7 +90,7 @@ func (c *functions) Watch(opts v1.ListOptions) (watch.Interface, error) {
 		Namespace(c.ns).
 		Resource("functions").
 		VersionedParams(&opts, scheme.ParameterCodec).
-		Watch()
+		Watch(context.Background())
 }
 
 // Create takes the representation of a function and creates it.  Returns the server's representation of the function, and an error, if there is any.
@@ -99,7 +100,7 @@ func (c *functions) Create(function *v1beta1.Function) (result *v1beta1.Function
 		Namespace(c.ns).
 		Resource("functions").
 		Body(function).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return
 }
@@ -112,7 +113,7 @@ func (c *functions) Update(function *v1beta1.Function) (result *v1beta1.Function
 		Resource("functions").
 		Name(function.Name).
 		Body(function).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return
 }
@@ -124,7 +125,7 @@ func (c *functions) Delete(name string, options *v1.DeleteOptions) error {
 		Resource("functions").
 		Name(name).
 		Body(options).
-		Do().
+		Do(context.Background()).
 		Error()
 }
 
@@ -135,7 +136,7 @@ func (c *functions) DeleteCollection(options *v1.DeleteOptions, listOptions v1.L
 		Resource("functions").
 		VersionedParams(&listOptions, scheme.ParameterCodec).
 		Body(options).
-		Do().
+		Do(context.Background()).
 		Error()
 }
 
@@ -148,7 +149,7 @@ func (c *functions) Patch(name string, pt types.PatchType, data []byte, subresou
 		SubResource(subresources...).
 		Name(name).
 		Body(data).
-		Do().
+		Do(context.Background()).
 		Into(result)
 	return
 }
